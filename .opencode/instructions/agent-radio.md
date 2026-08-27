@@ -1,0 +1,77 @@
+# 📻 AgentRadio — Passive Awareness (opencode 체질)
+
+이 파일은 **모든 세션, 모든 에이전트**에 자동 주입된다. 플러그인(`plugins/agent-radio.ts`)이
+동일 내용을 시스템 프롬프트에 매 턴 주입하므로, 이 문서는 사람이 읽기 위한 정본이자
+LLM이 fallback으로 읽는 명세다. 소스: [AgentRadio](https://github.com/Coral-Protocol/AgentRadio) (arXiv:2607.28430).
+
+## 핵심 한 줄
+
+> 듣는 것은 백그라운드에서 일어난다. 일하는 턴을 소모하지 않는다. 메시지는 다음 스텝 경계에서 자동으로 보인다.
+
+기존 멀티에이전트(L2, blocking receive)는 “듣기 위해 일을 멈췄다”. AgentRadio(L3)는 `wait_for_mention`을
+백그라운드 태스크로 돌려 발견을 즉시 전파한다. SWE-Atlas QnA에서 51.6%→62.1% (+10.5p).
+
+## 버스
+
+- 위치: `RADIO_ROOT` (플러그인이 `~/.cache/opencode/radio/<worktree>-$hash`로 자동 설정, `shell.env` 훅). 모든 세션/서브에이전트는 **동일 worktree에서 같은 RADIO_ROOT**를 공유한다. 수동 설정 필요 없음.
+- 저장: append-only JSONL 디렉터리. `threads/<name>.jsonl` 한 줄이 한 메시지.
+- 셀 셰어러: `~/.config/opencode/skills/agent-radio/scripts/radio.sh` (python3 stdlib, 폴백) + 플러그인 네이티브 툴(권장).
+
+## 네이티브 툴 (LLM이 직접 호출, 플러그인이 제공)
+
+| 툴 | 용도 | 블로킹 |
+|---|---|---|
+| `radio_send` | `thread` + `content` + `from`(선택) + `mentions`(csv). fire-and-forget, 즉시 반환. | No |
+| `radio_read` | 전체 버스 덤프(스레드 무관). tail `limit` 지원. | No |
+| `radio_threads` | 스레드 목록 | No |
+| `radio_wait` | **가급적 쓰지 말 것** — foreground 블로킹 대기. L2 모드 전용. | Yes (최대 120s) |
+| `radio_init` | 버스 초기화(idempotent) | No |
+
+셀에서 쓸 때는 `radio.sh` 동일: `radio.sh send <thread> <me> "<content>" --mentions csv`, `radio.sh read`, `radio.sh wait <me>`.
+
+## 패시브 인식 루프 — 이게 전부다
+
+1. **일을 멈추지 마라.** `wait`를 foreground로 호출하지 마라. 플러그인이 매 스텝 경계에서 버스 상태를 시스템 프롬프트에 자동 주입한다 — 너는 이미 듣고 있다.
+2. 네가 보내는 것은 즉시 전파된다(`radio_send`는 논블로킹). 동료는 다음 스텝에서 본다.
+3. 트리아지: `URGENT:`는 지금 처리(이미 진행 중인 작업에 영향), `FYI:`는 메모만, prefix 없으면 다음 자연스러운 break에 reply.
+4. 메시지를 조용히 드랍하지 마라. defer했으면 기록하고 다음 페이즈 전에 복귀.
+5. 컨텍스트 컴팩션 후에는 `radio_read`를 다시 호출해 근거를 verbatim 복사한 뒤 주장하라 — 컴팩션은 기억을 손실시킨다.
+
+## 5-페이즈 프로토콜 (긴 호흡 작업에만 — 짧은 작업은 생략)
+
+짧거나 단일 서브태스크면 라디오를 쓰지 않아도 된다. “중간”이 있는 긴 작업에서만 아래를 따른다.
+
+**P1 Explore** — 각자 독립 탐색, 서브질문 초안, 아직 전송 없음. watcher는 이미 패시브이므로 시작할 필요 없음.
+
+**P2 Divide** — assembler(agent-1)가 `planning` 스레드 연다. 모두가 커버리지를 제안하고, 모든 명시·암묵 서브질문이 커버되고 함께 있어야 할 것이 쪼개지지 않을 때까지 협상. 전원이 `APPROVE` (모두 mention) 후 P3 진입. assembler가 최종 plan을 broadcast하고 `worklog` 스레드를 연다. **결정은 planning, 라이브 발견은 worklog — 분리 유지.**
+
+**P3 Execute, with live sharing** — 맡은 몫을 독립 수행. 아래가 생기는 즉시 `worklog`에 post (mention으로 깨우기):
+- 다른 에이전트 서브질문에 영향 주는 발견
+- 합의된 plan/동료 주장과 모순되는 것 (`URGENT:` if 상대 진행 중 작업이 의존)
+- 장애 — 뭘 시도했고 어떻게 실패했는지 정확히
+- 버린 접근 — 아무도 같은 dead end를 재시도하지 않게
+
+증거는 정확한 값, 파일 경로, 줄 번호. “코드를 돌리라”면 실제로 돌려라.
+
+**P4 Review** — 각자 결과를 자신의 `results-<me>` 스레드에 evidence와 함께 broadcast. 리뷰어는 사실 충돌, 얇은 evidence, 정보 gap(“내 영역에서 본 X를 네가 언급 안 함”)을 지적. 미해결은 P3로 반송. gap이 없고 충돌이 없을 때만 `APPROVE`.
+
+**P5 Submit** — unanimous approve 후에만 assembler가 FULL draft(요약 아님)를 쓰고, 모두가 자기 findings와 대조한 뒤 unanimous APPROVE 후 제출.
+
+## 서브에이전트(`task` 툴)로 쓰는 법
+
+하나의 오케스트레이터가 병렬로 `task` 서브에이전트를 띄우는 경우: 각 워커에게 동일한 `RADIO_ROOT`가 자동 주입되므로, 각 워커는 진행 중 발견을 `worklog`에 바로 `radio_send` 하면 된다. 오케스트레이터의 스텝 경계(= 너의 툴콜 경계)가 watcher 역할을 한다 — 매 턴 주입되는 버스 상태를 읽고 트리아지하라.
+
+## 다중 프로세스(여러 `opencode run` / tmux 팬)로 쓰는 법
+
+서로 다른 터미널에서 같은 worktree를 열면 같은 `RADIO_ROOT`를 공유한다. 한 팬에서 `radio_send` 하면 다른 팬의 다음 스텝에 자동 주입된다. 명시적으로 같은 버스를 쓰고 싶으면 `export RADIO_ROOT=/tmp/my-radio && ~/.config/opencode/skills/agent-radio/scripts/radio.sh init` 으로 고정 후 모든 팬에 동일 export.
+
+## 안티패턴
+
+- `radio_wait`를 foreground에서 긴 timeout으로 호출하고 일을 멈추기 — L2로 퇴화.
+- `planning`과 `worklog`를 섞기, 스레드 없이 DM으로만 소통하기.
+- evidence 없이 주장하기, 검증 없이 approve하기.
+- “나중에 읽겠다”며 URGENT를 드랍하기.
+
+## Fidelity ladder (필요한 만큼만 쓰기)
+
+B0 solo → L1 분업만 → L2 분업+협상(블로킹) → L3 분업+협상+패시브. 대부분의 이득은 mid-execution correction에서 온다. 중간이 없는 작은 태스크엔 라디오를 생략해도 된다.
