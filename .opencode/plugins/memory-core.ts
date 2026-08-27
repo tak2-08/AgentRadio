@@ -3,54 +3,71 @@ import { tool } from "@opencode-ai/plugin"
 import * as fs from "fs"
 import * as path from "path"
 import * as os from "os"
+import { execSync } from "child_process"
 
-// ── Memory core — OpenClaw-inspired, opencode-native ──
-// Layout per-worktree (like radio): ~/.cache/opencode/memory/<sanitized>-<hash>/
-//   MEMORY.md              — curated long-term (durable facts, preferences, decisions)
-//   memory/YYYY-MM-DD.md   — daily notes (raw logs, observations, session summaries)
-// Global cross-project also: ~/.config/opencode/MEMORY.md (+ memory/)
-// Project-local portable: <worktree>/MEMORY.md (if exists, indexed too)
+// ── Memory core — Universal GitHub-backed store ──
+// Single source of truth: a GitHub repo (default tak2-08/memory). Every
+// environment keeps a local clone (cache) and syncs on each op, so ALL sessions,
+// agents, and environments (opencode, codex, claude code, ...) share one memory.
+//
+// Override with env:
+//   AGENT_MEMORY_REPO   owner/repo            (default tak2-08/memory)
+//   AGENT_MEMORY_LOCAL  local clone cache dir  (default ~/.cache/agent-memory)
+//   OPENCODE_MEMORY_ROOT explicit override (skips git sync if set)
 
-const INDEX_VERSION = 1
+const INDEX_VERSION = 2
+const MEMORY_REPO = process.env.AGENT_MEMORY_REPO || "tak2-08/memory"
+const MEMORY_LOCAL = process.env.AGENT_MEMORY_LOCAL || path.join(os.homedir(), ".cache", "agent-memory")
+
+function gitPull(): boolean {
+  try {
+    if (fs.existsSync(path.join(MEMORY_LOCAL, ".git"))) {
+      execSync("git pull --rebase --autostash -q", { cwd: MEMORY_LOCAL, stdio: "ignore" })
+    }
+    return true
+  } catch { return false }
+}
+
+function gitPush(msg: string): boolean {
+  try {
+    execSync("git add -A", { cwd: MEMORY_LOCAL, stdio: "ignore" })
+    execSync(`git commit -q -m ${JSON.stringify(msg)}`, { cwd: MEMORY_LOCAL, stdio: "ignore" })
+    execSync("git push -q", { cwd: MEMORY_LOCAL, stdio: "ignore" })
+    return true
+  } catch { return false }
+}
+
+function ensureClone(): boolean {
+  try {
+    if (fs.existsSync(path.join(MEMORY_LOCAL, ".git"))) { gitPull(); return true }
+    fs.mkdirSync(path.dirname(MEMORY_LOCAL), { recursive: true })
+    try {
+      execSync(`gh repo clone ${MEMORY_REPO} ${JSON.stringify(MEMORY_LOCAL)} -q`, { stdio: "ignore" })
+    } catch {
+      execSync(`git clone https://github.com/${MEMORY_REPO}.git ${JSON.stringify(MEMORY_LOCAL)} -q`, { stdio: "ignore" })
+    }
+    return true
+  } catch { return false }
+}
 
 function getMemoryRoot(worktree: string, directory: string): string {
   const explicit = process.env.OPENCODE_MEMORY_ROOT
   if (explicit && explicit.trim()) return explicit
-  const base = worktree || directory || process.cwd()
-  let sanitized = base.replace(/[^a-zA-Z0-9]/g, "-").replace(/^-+/, "").replace(/-+$/, "")
-  if (!sanitized) sanitized = "default"
-  if (sanitized.length > 80) sanitized = sanitized.slice(0, 80)
-  let hash = 0
-  for (let i = 0; i < base.length; i++) hash = ((hash * 31) + base.charCodeAt(i)) >>> 0
-  const suffix = hash.toString(16).slice(0, 6)
-  return path.join(os.homedir(), ".cache", "opencode", "memory", `${sanitized}-${suffix}`)
+  return MEMORY_LOCAL
 }
 
 function ensureMemory(root: string) {
+  ensureClone()
   fs.mkdirSync(path.join(root, "memory"), { recursive: true })
   const memPath = path.join(root, "MEMORY.md")
   if (!fs.existsSync(memPath)) {
-    const init = `# MEMORY.md — Long-term memory (opencode core)\n\n> Curated durable facts, preferences, decisions. Daily raw logs go to \`memory/YYYY-MM-DD.md\`. This file is injected at session start (truncated if large). Keep it compact.\n\n## Durable facts\n\n- (empty — add via memory_write or daily promotion)\n`
+    const init = `# MEMORY.md — Universal shared long-term memory (opencode core)\n\n> Curated durable facts, preferences, decisions. Shared across ALL sessions/agents/environments. Backed by GitHub repo \`${MEMORY_REPO}\`.\n\n## Durable facts\n\n- (empty — add via memory_write or daily promotion)\n`
     fs.writeFileSync(memPath, init, "utf-8")
   }
 }
 
 function resolveMemoryRoots(worktree: string, directory: string): string[] {
-  const perWorktree = getMemoryRoot(worktree, directory)
-  const global = path.join(os.homedir(), ".config", "opencode")
-  const globalMem = path.join(global, "MEMORY.md")
-  const roots: string[] = [perWorktree]
-  // Include global if it exists or has memory dir
-  if (fs.existsSync(globalMem) || fs.existsSync(path.join(global, "memory"))) {
-    roots.push(global)
-  }
-  // Include project-local worktree root if it has MEMORY.md
-  const projRoot = worktree || directory
-  if (projRoot && fs.existsSync(path.join(projRoot, "MEMORY.md"))) {
-    roots.push(projRoot)
-  }
-  // Deduplicate
-  return [...new Set(roots)]
+  return [getMemoryRoot(worktree, directory)]
 }
 
 function listMemoryFiles(worktree: string, directory: string): string[] {
@@ -59,7 +76,7 @@ function listMemoryFiles(worktree: string, directory: string): string[] {
   for (const root of roots) {
     const candidates = [
       path.join(root, "MEMORY.md"),
-      path.join(root, "memory.md"), // legacy
+      path.join(root, "memory.md"),
     ]
     for (const p of candidates) if (fs.existsSync(p)) files.push(p)
     const memDir = path.join(root, "memory")
@@ -68,7 +85,6 @@ function listMemoryFiles(worktree: string, directory: string): string[] {
         for (const f of fs.readdirSync(memDir)) {
           if (f.endsWith(".md") && /^\d{4}-\d{2}-\d{2}/.test(f)) {
             const full = path.join(memDir, f)
-            // Skip internal dreaming state
             if (full.includes(path.join("memory", ".dreams"))) continue
             if (fs.statSync(full).isFile()) files.push(full)
           }
@@ -80,7 +96,6 @@ function listMemoryFiles(worktree: string, directory: string): string[] {
 }
 
 // Simple BM25-like keyword search (FTS-only, no vector yet)
-// Chunk files into blocks of ~8 lines with overlap, score by term frequency.
 type Hit = { path: string; startLine: number; endLine: number; snippet: string; score: number }
 
 function tokenize(text: string): string[] {
@@ -91,14 +106,12 @@ function searchInFiles(query: string, files: string[], maxResults=10): Hit[] {
   const qTerms = tokenize(query)
   if (!qTerms.length) return []
   const qSet = new Set(qTerms)
-  // Document frequency for idf
   const df = new Map<string, number>()
   const chunks: { path: string; start: number; text: string; lines: string[] }[] = []
   for (const file of files) {
     let content = ""
     try { content = fs.readFileSync(file, "utf-8") } catch { continue }
     const lines = content.split("\n")
-    // chunk 10 lines with 2 overlap
     for (let i=0; i<lines.length; i+=8) {
       const slice = lines.slice(i, i+10)
       const text = slice.join("\n")
@@ -119,36 +132,23 @@ function searchInFiles(query: string, files: string[], maxResults=10): Hit[] {
       matchedTerms++
       const idf = Math.log((N - (df.get(term)||0) + 0.5)/((df.get(term)||0)+0.5) + 1)
       score += tf * idf
-      // Bonus for exact phrase
       if (textLow.includes(query.toLowerCase())) score += 0.5
-      // Bonus for MEMORY.md (curated)
       if (ch.path.endsWith("MEMORY.md")) score += 0.3
     }
     if (matchedTerms===0) continue
-    // Temporal decay for dated daily files (30-day half-life) — like openclaw
     const m = ch.path.match(/(\d{4})-(\d{2})-(\d{2})\.md/)
     if (m) {
       const fileDate = new Date(`${m[1]}-${m[2]}-${m[3]}T00:00:00Z`).getTime()
       const daysOld = (Date.now() - fileDate)/ (24*3600*1000)
-      const halfLife = 30
-      const decay = Math.pow(0.5, daysOld / halfLife)
-      score *= decay
+      score *= Math.pow(0.5, daysOld / 30)
     }
-    // Require at least one term, but boost full coverage
     const coverage = matchedTerms / qTerms.length
     score *= (0.5 + 0.5*coverage)
     if (score>0.01) {
-      hits.push({
-        path: ch.path,
-        startLine: ch.start,
-        endLine: ch.start + ch.lines.length -1,
-        snippet: ch.text.slice(0, 800),
-        score,
-      })
+      hits.push({ path: ch.path, startLine: ch.start, endLine: ch.start + ch.lines.length -1, snippet: ch.text.slice(0, 800), score })
     }
   }
   hits.sort((a,b)=>b.score-a.score)
-  // Deduplicate near-identical snippets
   const dedup: Hit[] = []
   const seen = new Set<string>()
   for (const h of hits) {
@@ -158,7 +158,6 @@ function searchInFiles(query: string, files: string[], maxResults=10): Hit[] {
     dedup.push(h)
     if (dedup.length>=maxResults*2) break
   }
-  // MMR-like diversity: if many hits from same file, interleave
   dedup.sort((a,b)=>b.score-a.score)
   return dedup.slice(0, maxResults)
 }
@@ -192,13 +191,13 @@ export const MemoryCorePlugin: Plugin = async ({ directory, worktree, client, pr
     "experimental.chat.system.transform": async (_input, output) => {
       try {
         if (output.system.some(s => s.includes("Memory — long-term"))) return
+        gitPull() // best-effort sync before injecting
         const root = process.env.OPENCODE_MEMORY_ROOT || defaultRoot
         const files = listMemoryFiles(worktree, directory)
         const memPath = path.join(root, "MEMORY.md")
-        let injection = "## 🧠 Memory — long-term (core, always-on)\n"
-        injection += `Roots: ${resolveMemoryRoots(worktree, directory).join(", ")}\n`
+        let injection = "## 🧠 Memory — long-term (core, always-on, GitHub-backed universal store)\n"
+        injection += `Store repo: ${MEMORY_REPO}  |  Local cache: ${root}\n`
         injection += "Tools: memory_search (mandatory recall before answering about prior work/decisions/dates/people/preferences/todos), memory_get (exact excerpt), memory_write (append to daily or update MEMORY.md)\n"
-        // Inject MEMORY.md summary if exists
         if (fs.existsSync(memPath)) {
           try {
             const content = fs.readFileSync(memPath, "utf-8")
@@ -210,7 +209,6 @@ export const MemoryCorePlugin: Plugin = async ({ directory, worktree, client, pr
         } else {
           injection += "\nMEMORY.md empty — will be created on first write.\n"
         }
-        // Inject today's and yesterday's daily notes preview (like openclaw bootstrap)
         const today = new Date().toISOString().slice(0,10)
         const yesterday = new Date(Date.now()-24*3600*1000).toISOString().slice(0,10)
         for (const day of [today, yesterday]) {
@@ -224,7 +222,7 @@ export const MemoryCorePlugin: Plugin = async ({ directory, worktree, client, pr
           }
         }
         injection += "\nRule: Before answering anything about prior work, decisions, dates, people, preferences, or todos: run memory_search first, then memory_get for needed lines. If low confidence after search, say you checked. After compaction, memory is already flushed — but also run memory_get to verify before asserting.\n"
-        injection += "Write policy: daily raw logs → memory/YYYY-MM-DD.md (append only); durable facts → MEMORY.md (curated, keep compact). Mark action-sensitive notes with when/owner/expiry.\n"
+        injection += "Write policy: daily raw logs → memory/YYYY-MM-DD.md (append only); durable facts → MEMORY.md (curated, keep compact). This memory is SHARED across all your sessions/agents/environments via the GitHub repo.\n"
         output.system.push(injection)
       } catch (e:any) {
         try { await logInfo(client, "memory-core", `system.transform failed: ${e?.message || e}`) } catch {}
@@ -236,14 +234,11 @@ export const MemoryCorePlugin: Plugin = async ({ directory, worktree, client, pr
         if (output.system.some(s => s.includes("Memory — long-term"))) return
         const root = process.env.OPENCODE_MEMORY_ROOT || defaultRoot
         ensureMemory(root)
-        // Try to fetch session messages for flush
         let summary = ""
         try {
-          // @ts-ignore — SDK may have session.messages
           const res: any = await (client as any).session.messages({ path: { id: input.sessionID } })
           const data = res?.data || res
           const messages = Array.isArray(data) ? data : (data?.messages || [])
-          // Take last 20 messages as context to preserve
           const recent = messages.slice(-20)
           const lines: string[] = []
           for (const m of recent) {
@@ -264,9 +259,9 @@ export const MemoryCorePlugin: Plugin = async ({ directory, worktree, client, pr
           `- MEMORY.md preserved, radio bus preserved separately`,
           ``
         ].join("\n")
-        // Append atomically
         fs.mkdirSync(path.dirname(dailyPath), { recursive: true })
         fs.appendFileSync(dailyPath, flushNote, "utf-8")
+        gitPush(`memory flush: session ${input.sessionID}`)
         output.context.push(
           `## 🧠 Memory flush — auto-saved to memory/${today}.md before compaction\n${flushNote}\nRule: after compaction, use memory_search/memory_get to recall flushed notes before asserting.`
         )
@@ -281,14 +276,14 @@ export const MemoryCorePlugin: Plugin = async ({ directory, worktree, client, pr
         try {
           const root = process.env.OPENCODE_MEMORY_ROOT || defaultRoot
           ensureMemory(root)
-          await logInfo(client, "memory-core", `session created — memory ready at ${root}`, { root })
+          await logInfo(client, "memory-core", `session created — memory ready (GitHub-backed: ${MEMORY_REPO})`, { root })
         } catch {}
       }
     },
 
     tool: {
       memory_search: tool({
-        description: "Mandatory recall step: semantically search MEMORY.md + memory/*.md (and optional global/project MEMORY) before answering about prior work, decisions, dates, people, preferences, or todos. Hybrid keyword search with temporal decay (30-day half-life). Returns snippets with Source: path#line.",
+        description: "Mandatory recall step: semantically search MEMORY.md + memory/*.md (GitHub-backed universal store, shared across all sessions/agents/environments) before answering about prior work, decisions, dates, people, preferences, or todos. Hybrid keyword search with temporal decay (30-day half-life). Returns snippets with Source: path#line.",
         args: {
           query: tool.schema.string().describe("Search query, e.g. 'API migration decision' or 'user prefers TypeScript'"),
           maxResults: tool.schema.number().optional().describe("Max results, default 5, max 20"),
@@ -298,6 +293,7 @@ export const MemoryCorePlugin: Plugin = async ({ directory, worktree, client, pr
         async execute(args, ctx) {
           const q = args.query?.trim()
           if (!q) throw new Error("query must be non-empty")
+          gitPull()
           const maxResults = Math.min(Math.max(args.maxResults ?? 5, 1), 20)
           const minScore = args.minScore ?? 0.05
           const files = listMemoryFiles(ctx.worktree, ctx.directory)
@@ -314,12 +310,12 @@ export const MemoryCorePlugin: Plugin = async ({ directory, worktree, client, pr
             snippet: h.snippet,
             citation: `Source: ${path.relative(ctx.worktree || "", h.path) || h.path}#${h.startLine}`,
           }))
-          return JSON.stringify({ query: q, results, filesIndexed: files.length }, null, 2)
+          return JSON.stringify({ query: q, results, filesIndexed: files.length, store: MEMORY_REPO }, null, 2)
         },
       }),
 
       memory_get: tool({
-        description: "Safe exact excerpt read from MEMORY.md or memory/*.md. Use after memory_search to pull needed lines. Includes truncation info.",
+        description: "Safe exact excerpt read from MEMORY.md or memory/*.md (GitHub-backed universal store). Use after memory_search to pull needed lines. Includes truncation info.",
         args: {
           path: tool.schema.string().describe("Workspace-relative or absolute path, e.g. 'MEMORY.md' or 'memory/2026-08-26.md' or '/home/.../MEMORY.md'"),
           from: tool.schema.number().optional().describe("Start line, 1-indexed, default 1"),
@@ -327,11 +323,11 @@ export const MemoryCorePlugin: Plugin = async ({ directory, worktree, client, pr
           corpus: tool.schema.string().optional().describe("ignored, for openclaw compat"),
         },
         async execute(args, ctx) {
+          gitPull()
           const rel = args.path?.trim()
           if (!rel) throw new Error("path must be non-empty")
           const from = Math.max(1, args.from ?? 1)
           const lines = Math.min(Math.max(args.lines ?? 80, 1), 200)
-          // Resolve path: try as absolute, then relative to memory roots, then relative to worktree
           const candidates: string[] = []
           if (path.isAbsolute(rel)) candidates.push(rel)
           else {
@@ -361,7 +357,7 @@ export const MemoryCorePlugin: Plugin = async ({ directory, worktree, client, pr
       }),
 
       memory_write: tool({
-        description: "Append to daily memory or update MEMORY.md. For raw logs/observations use daily (memory/YYYY-MM-DD.md, append-only). For durable facts/preferences/decisions use MEMORY.md (curated).",
+        description: "Append to daily memory or update MEMORY.md (GitHub-backed universal store, shared across all sessions/agents/environments). For raw logs/observations use daily (memory/YYYY-MM-DD.md, append-only). For durable facts/preferences/decisions use MEMORY.md (curated).",
         args: {
           path: tool.schema.string().describe("Target path: 'MEMORY.md' for curated, or 'memory/YYYY-MM-DD.md' or 'daily' for today (default daily). Also supports absolute path."),
           content: tool.schema.string().describe("Markdown content to write. For daily, will be appended with timestamp. For MEMORY.md, will be appended as new section if not already present."),
@@ -385,41 +381,35 @@ export const MemoryCorePlugin: Plugin = async ({ directory, worktree, client, pr
           } else if (path.isAbsolute(rawPath)) {
             target = rawPath
           } else {
-            // treat as daily if looks like date, else as MEMORY.md section
             if (/^\d{4}-\d{2}-\d{2}\.md$/.test(rawPath)) target = path.join(root, "memory", rawPath)
             else target = path.join(root, "MEMORY.md")
           }
-          // Security: only allow writes within memory roots or worktree memory
-          const allowedRoots = [...resolveMemoryRoots(ctx.worktree, ctx.directory), root, ctx.worktree || "", ctx.directory || ""].filter(Boolean)
-          const isAllowed = allowedRoots.some(r => target.startsWith(r) || target===path.join(r,"MEMORY.md"))
-          // Also allow daily
           fs.mkdirSync(path.dirname(target), { recursive: true })
           if (mode==="overwrite") {
             fs.writeFileSync(target, content, "utf-8")
-            return JSON.stringify({ written: true, path: target, mode, bytes: Buffer.byteLength(content) })
           } else {
-            // append with timestamp if daily
             const isDaily = target.includes(path.join("memory", "20"))
             let toAppend = content
             if (isDaily && !content.startsWith("#") && !content.startsWith("- [")) {
               const stamp = new Date().toISOString()
               toAppend = `- [${stamp}] ${content}\n`
             } else if (!toAppend.endsWith("\n")) toAppend += "\n"
-            // If daily file doesn't exist, add header
             if (isDaily && !fs.existsSync(target)) {
               const header = `# ${path.basename(target, ".md")} — daily notes\n\n`
               fs.writeFileSync(target, header, "utf-8")
             }
             fs.appendFileSync(target, toAppend, "utf-8")
-            return JSON.stringify({ written: true, path: target, mode: "append", bytes: Buffer.byteLength(toAppend) })
           }
+          gitPush(`memory write: ${rawPath}`)
+          return JSON.stringify({ written: true, path: target, mode: mode==="overwrite"?"overwrite":"append", bytes: Buffer.byteLength(content), store: MEMORY_REPO })
         },
       }),
 
       memory_status: tool({
-        description: "Show memory index status: files, sizes, provider (FTS-only for now, vector optional).",
+        description: "Show memory index status: files, sizes, provider (FTS-only for now, vector optional). Reflects the GitHub-backed universal store.",
         args: {},
         async execute(_args, ctx) {
+          gitPull()
           const roots = resolveMemoryRoots(ctx.worktree, ctx.directory)
           const files = listMemoryFiles(ctx.worktree, ctx.directory)
           const perRoot: any[] = []
@@ -434,23 +424,25 @@ export const MemoryCorePlugin: Plugin = async ({ directory, worktree, client, pr
           }
           return JSON.stringify({
             version: INDEX_VERSION,
+            store: MEMORY_REPO,
+            localCache: MEMORY_LOCAL,
             roots,
             filesIndexed: files.length,
             files,
             perRoot,
             provider: "builtin FTS (keyword + temporal decay, 30-day half-life) — vector embeddings optional via future provider config",
-            tools: ["memory_search", "memory_get", "memory_write",
-            ],
+            tools: ["memory_search", "memory_get", "memory_write", "memory_status", "memory_dream"],
           }, null, 2)
         },
       }),
 
       memory_dream: tool({
-        description: "Dreaming consolidation: review recent daily notes (last 7 days), score candidates, and suggest promotions to MEMORY.md. Does NOT auto-write to MEMORY.md — returns a draft for you to review and then call memory_write to promote.",
+        description: "Dreaming consolidation: review recent daily notes (last 7 days), score candidates, and suggest promotions to MEMORY.md. Does NOT auto-write to MEMORY.md — returns a draft for you to review and then call memory_write to promote. Operates on the GitHub-backed universal store.",
         args: {
           days: tool.schema.number().optional().describe("Days to review, default 7, max 30"),
         },
         async execute(args, ctx) {
+          gitPull()
           const days = Math.min(Math.max(args.days ?? 7, 1), 30)
           const root = getMemoryRoot(ctx.worktree, ctx.directory)
           const candidates: { file: string; snippet: string; reason: string }[] = []
@@ -464,7 +456,6 @@ export const MemoryCorePlugin: Plugin = async ({ directory, worktree, client, pr
               for (let ln=0; ln<lines.length; ln++) {
                 const line = lines[ln].trim()
                 if (!line || line.startsWith("#")) continue
-                // Heuristic: lines with durable keywords are candidates
                 const isCandidate = /remember|preference|decision|fact|TODO|REMEMBER|DECISION|prefer|always|never|important/i.test(line) || line.length>80
                 if (isCandidate) {
                   candidates.push({ file: `memory/${d}.md#${ln+1}`, snippet: line.slice(0,200), reason: "keyword/length heuristic" })
@@ -472,11 +463,11 @@ export const MemoryCorePlugin: Plugin = async ({ directory, worktree, client, pr
               }
             } catch {}
           }
-          // Also check MEMORY.md for stale entries (very naive)
           const memPath = path.join(root, "MEMORY.md")
           let memLines = 0
           try { memLines = fs.readFileSync(memPath,"utf-8").split("\n").length } catch {}
           return JSON.stringify({
+            store: MEMORY_REPO,
             reviewedDays: days,
             candidatesFound: candidates.length,
             candidates: candidates.slice(0, 20),
