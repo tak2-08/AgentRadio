@@ -46,6 +46,34 @@ AgentRadio는 두 층위의 협력을 지원한다. 소통 매체는 (a) 한 세
 3. 팀원 세션: `memory get sessions/<task>/leader-directive.md` (또는 proxy 지시) 읽고 작업 → `memory write sessions/<task>/member-<id>.md --content "결과/증거"`.
 4. 팀장 세션: `memory get sessions/<task>/proxy-synthesis.md` 로 종합 수신 → 승인/피드백을 다시 memory에 기록(팀장 의견 전달).
 
+## 팀장 세션 라이프사이클 (Team Leader Session Lifecycle)
+
+팀장 세션은 유저(=사장)와 직접 대화하며 전체를 조율한다. 절차:
+
+1. **목표 수집** — boss에게 목표를 묻고, 필요하면 디테일한 질문(범위/제약/품질기준/마감/선호)을 한다.
+2. **/plan 실행** — AgentRadio용 `/plan` 커맨드를 실행해 세션 토폴로지(팀장 1 + 대리 1 + 팀원 N)와 각 세션용 프롬프트를 설계한다.
+3. **세션 생성 안내** — boss에게 "세션 몇 개, 어떤 프롬프트를 어디에 넣을지"를 안내한다. `/plan` 출력물에 복붙용 프롬프트가 포함되어 있다. (멀티세션은 새 터미널/프로세스로, 싱글세션 병렬 서브에이전트는 `task` 툴로 생성.)
+4. **업무 진행 (릴레이 흐름)** — 실제 회사처럼 계층적 릴레이:
+   `user → leader → proxy → member`, `proxy → member → proxy → member → member → proxy`, `leader → proxy → member → proxy → member → proxy → leader` …
+   대리가 허브가 되어 상하위를 연결한다.
+5. **토론(Debate)** — 아래 토론 프로토콜. 토론 결과를 바탕으로 팀장이 스스로 신규 업무를 추가 하달/진행할 수 있다.
+
+> 싱글 세션(한 세션 내 병렬 서브에이전트)에서도 동일: 오케스트레이터가 팀장 역할, `task`로 대리+팀원을 띄우고 동일 릴레이/토론을 수행.
+
+## 토론 프로토콜 (Debate Protocol)
+
+팀장이 토론을 트리거하면 대리가 사회자(모더레이터)가 되어 팀원 간 구조적 토론을 진행한다.
+
+1. **leader → proxy**: 토론 주제+목표를 `sessions/<task>/debate-<n>.md`(또는 radio)에 기록.
+2. **proxy → members (개별 전달)**: 대리가 주제+목표를 각 팀원에게 *개별적으로* 전달. 각 팀원은 반드시 하나의 **입장(stance)** 을 제시한다:
+   - `수용`(accept) · `부정`(reject) · `긍정`(positive/build) · `조건부부정`(reject-unless-condition) · `공격`(attack another's position) · `방어`(defend a position)
+   - 라벨만 붙이지 말고 근거/증거를 포함할 것.
+3. **proxy 사회자**: 모든 팀원이 응답했는지 확인, 필요시 1~2 라운드 추가하여 attack/defend로 서로 반응하게 함. 대리는 편을 들지 않고 충돌을 부각·정리·온토픽 유지.
+4. **proxy → leader**: 토론이 정리되면(또는 타임아웃) `sessions/<task>/proxy-debate-<n>.md`에 종합(팀원별 입장, 합의점, 미해결 충돌, 권고)을 기록·전달.
+5. **leader 결정**: 종합을 읽고, 스스로 **신규 업무를 추가 하달/진행**할 수 있다. 그 후 릴레이 계속.
+
+메시지 태그: `STANCE:수용|부정|긍정|조건부부정|공격|방어`. 싱글 세션 병렬 서브에이전트에서도 동일: 오케스트레이터가 대리/사회자 역할을 맡아 `task` 워커들 간 동일 stance 기반 토론을 진행.
+
 ## 버스
 
 - 위치: `RADIO_ROOT` (플러그인이 `~/.cache/opencode/radio/<worktree>-$hash`로 자동 설정, `shell.env` 훅). 모든 세션/서브에이전트는 **동일 worktree에서 같은 RADIO_ROOT**를 공유한다. 수동 설정 필요 없음.

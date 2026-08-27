@@ -55,6 +55,18 @@ When agents span DIFFERENT sessions/processes, the radio bus is not shared. Use 
 
 Within your own session you still run the watcher loop + five-phase protocol over radio.
 
+## Role-based collaboration (team-leader / proxy / team-member)
+
+For hierarchical multi-session collaboration, use the role-specific templates instead of
+(or in addition to) this generic peer template:
+- `prompts/leader-CLAUDE.md.template`  — Team Leader Session (talks to the boss, runs /plan)
+- `prompts/proxy-CLAUDE.md.template`   — Proxy Session (relay/synthesis/moderator)
+- `prompts/member-CLAUDE.md.template`  — Team Member Sub-session (parallel agent)
+
+When sessions span different processes, the radio bus is not shared — use the memory store
+(`tak2-08/memory`) as the inter-session bus (see agent-radio instructions: 협력 아키텍처,
+팀장 세션 라이프사이클, 토론 프로토콜).
+
 ## Rules
 
 - Do not idle: always be working, watcher alive in the background.
