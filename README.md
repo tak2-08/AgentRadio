@@ -71,6 +71,52 @@ single-agent leaderboard entry, Claude Code with the newer Opus 4.8 (57.2 %).
 - **2026-07** — The AgentRadio paper is released on [arXiv](https://arxiv.org/abs/2607.28430). 🎉
 - **2026-07** — Code, adapters, and the full 124-task SWE-Atlas QnA setup are open-sourced. 🚀
 
+## 🤖 OpenCode / Claude Code / Codex Integration (`.opencode/`)
+
+This repo also ships an **opencode integration** (the `.opencode/` directory) that turns
+AgentRadio's protocol into a usable skill across **OpenCode**, **Claude Code**, and **Codex**.
+It adds everything below on top of the research harness:
+
+* **Passive-awareness bus** — `plugins/agent-radio.ts` + `scripts/radio.sh` give every agent a
+  file-based radio channel (`create-thread` / `send` / `wait_for_mention`) with **zero servers**.
+* **Universal memory store** — `plugins/memory-core.ts` + the
+  [`tak2-08/memory`](https://github.com/tak2-08/memory) GitHub repo make long-term memory
+  **shared by ALL sessions / agents / environments** (OpenCode, Claude Code, Codex). Portable
+  CLI: `bin/memory.sh` (curl-install). Recall is mandatory before answering about prior work.
+* **Team Leader lifecycle** — a *Team Leader Session* talks to the boss (user), runs `/팀장`
+  to design the topology (1 leader + 1 proxy + N members) and emit copy-paste launch prompts,
+  then orchestrates a hierarchical relay: `user → leader → proxy → member …`.
+* **`/팀장`** (was `/plan`) — Team Leader designs session topology + launch prompts.
+* **`/토론`** (was `/debate`) — proxy-moderated stance-based debate (수용/부정/긍정/조건부부정/공격/방어)
+  among members; synthesis back to the leader, who may assign new work.
+* **`/대리` · `/팀원`** — output the Proxy / Team-Member launch prompts.
+* **`/세션간-라디오`** — guide for cross-session collaboration (radio bus + memory store).
+* **Role templates** — `prompts/팀장-CLAUDE.md.template`, `prompts/대리-CLAUDE.md.template`,
+  `prompts/팀원-CLAUDE.md.template` for Team Leader / Proxy / Team Member sessions.
+
+### Works with `agent-shared-context`
+
+AgentRadio integrates naturally with **[agent-shared-context](https://github.com/tak2-08/agent-shared-context)**
+— a token-saving inter-agent shared context DB. Use *agent-shared-context* as the structured
+knowledge store and *AgentRadio* as the live collaboration / orchestration layer; together they
+give agents both **shared memory** and **coordinated multi-agent execution**. (The
+agent-shared-context README likewise points back to AgentRadio as its collaboration layer.)
+
+### Usage
+
+* **OpenCode** — the `.opencode/` folder is auto-loaded. Restart opencode; the `memory_*` and
+  radio commands plus `/팀장`, `/토론`, `/대리`, `/팀원`, `/세션간-라디오` are available. The plugin
+  syncs memory to `tak2-08/memory` (set `AGENT_MEMORY_REPO` / `AGENT_MEMORY_LOCAL` /
+  `AGENT_MEMORY_NS` to override).
+* **Claude Code** — copy `skills/agent-radio` and `skills/memory-core` into `~/.claude/skills/`,
+  and install the portable store with `bin/memory.sh` (curl-install). Drop the role templates
+  into your `CLAUDE.md` or a skill.
+* **Codex** — same as Claude Code: copy the skills into `~/.codex/skills/` (or your codex skills
+  dir) and install `bin/memory.sh`.
+
+See `skills/agent-radio/SKILL.md` for the full protocol, and `skills/memory-core/SKILL.md` for
+the memory system.
+
 ## 💡 Why AgentRadio
 
 * **Communication stops costing work** — `wait_for_mention` runs as a *background task* of
@@ -155,6 +201,12 @@ run_config/qa/
   full_run.sh                     B0 baseline batch runner (all 124 tasks)
   run_passive_multi_agent.sh      L3 batch runner
 verify_local.py                   rubric verifier (LLM judge), run locally on a trial dir
+
+.opencode/                         OpenCode/Claude Code/Codex integration (see "OpenCode / Claude
+                                   Code / Codex Integration" above): passive radio bus, universal
+                                   memory store, /팀장 /토론 /대리 /팀원 /세션간-라디오 commands,
+                                   team-leader/proxy/member role templates, and the memory-core
+                                   plugin synced to the tak2-08/memory GitHub repo.
 ```
 
 Every task directory under `data/qa/` carries the instruction, the pinned execution

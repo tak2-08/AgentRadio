@@ -71,6 +71,49 @@ AgentRadio 하의 Opus 4.6 에이전트 넷(62.1 %)은 가장 강력한 단일 �
 - **2026-07** — AgentRadio 논문이 [arXiv](https://arxiv.org/abs/2607.28430)에 공개되었습니다. 🎉
 - **2026-07** — 코드, 어댑터, 124개 SWE-Atlas QnA 과제 전체 설정이 오픈소스로 공개되었습니다. 🚀
 
+## 🤖 OpenCode / Claude Code / Codex 통합 (`.opencode/`)
+
+이 저장소에는 AgentRadio 프로토콜을 **OpenCode**, **Claude Code**, **Codex**에서 바로 쓸 수
+있게 만드는 **opencode 통합**(`.opencode/` 디렉터리)도 포함되어 있습니다. 연구용 하네스 위에
+아래 기능을 모두 추가합니다:
+
+* **수동적 인지 버스** — `plugins/agent-radio.ts` + `scripts/radio.sh`로 서버 없이 모든 에이전트가
+  파일 기반 라디오 채널(`create-thread` / `send` / `wait_for_mention`)을 씁니다.
+* **범용 메모리 저장소** — `plugins/memory-core.ts` + GitHub 저장소
+  [`tak2-08/memory`](https://github.com/tak2-08/memory)로 장기 기억을 **모든 세션/에이전트/환경**
+  (OpenCode, Claude Code, Codex)이 공유합니다. 이식 가능한 CLI: `bin/memory.sh`(curl 설치).
+  이전 작업에 답하기 전 필수 회상(mandatory recall).
+* **팀장 세션 라이프사이클** — *팀장 세션*이 boss(유저)와 대화하고, `/팀장`을 실행해 토폴로지
+  (팀장 1 + 대리 1 + 팀원 N)와 복붙용 시작 프롬프트를 설계한 뒤 계층적 릴레이
+  (`user → leader → proxy → member …`)를 조율합니다.
+* **`/팀장`**(구 `/plan`) — 팀장이 세션 토폴로지 + 시작 프롬프트 설계.
+* **`/토론`**(구 `/debate`) — 대리 사회자의 입장 기반 토론(수용/부정/긍정/조건부부정/공격/방어);
+  종합을 팀장이 받아 신규 업무를 하달.
+* **`/대리` · `/팀원`** — 대리 / 팀원 시작 프롬프트 출력.
+* **`/세션간-라디오`** — 세션 간 협업 가이드(라디오 버스 + 메모리 저장소).
+* **역할 템플릿** — `prompts/팀장-CLAUDE.md.template`, `prompts/대리-CLAUDE.md.template`,
+  `prompts/팀원-CLAUDE.md.template` (팀장 / 대리 / 팀원 세션용).
+
+### `agent-shared-context`와 함께 쓰기
+
+AgentRadio는 **[agent-shared-context](https://github.com/tak2-08/agent-shared-context)**
+(토큰 절약형 인터에이전트 공유 컨텍스트 DB)와 자연스럽게 결합합니다. *agent-shared-context*를
+구조화된 지식 저장소로, *AgentRadio*를 실시간 협업/오케스트레이션 레이어로 쓰면, 에이전트는
+**공유 기억**과 **조율된 멀티에이전트 실행**을 동시에 갖게 됩니다. (agent-shared-context README도
+협업 레이어로 AgentRadio를 가리킵니다.)
+
+### 사용법
+
+* **OpenCode** — `.opencode/` 폴더가 자동 로드됩니다. opencode를 재시작하면 `memory_*` 및 라디오
+  명령, `/팀장`·`/토론`·`/대리`·`/팀원`·`/세션간-라디오`를 쓸 수 있습니다. 플러그인이 메모리를
+  `tak2-08/memory`에 동기화합니다(`AGENT_MEMORY_REPO` / `AGENT_MEMORY_LOCAL` / `AGENT_MEMORY_NS`로 오버라이드).
+* **Claude Code** — `skills/agent-radio`와 `skills/memory-core`를 `~/.claude/skills/`에 복사하고,
+  이식 가능한 저장소는 `bin/memory.sh`(curl 설치)로 설치. 역할 템플릿은 `CLAUDE.md`나 스킬에 넣습니다.
+* **Codex** — Claude Code와 동일: 스킬을 `~/.codex/skills/`(또는 codex 스킬 디렉터리)에 복사하고
+  `bin/memory.sh`를 설치.
+
+자세한 프로토콜은 `skills/agent-radio/SKILL.md`, 메모리 시스템은 `skills/memory-core/SKILL.md` 참조.
+
 ## 💡 왜 AgentRadio인가
 
 * **통신이 더 이상 작업을 소모하지 않음** — `wait_for_mention`이 하네스의 *백그라운드 작업*으로

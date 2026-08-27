@@ -140,15 +140,15 @@ Recommended cross-session flow:
 
 1. **Goal clarification** — ask the boss for the goal; ask detailed follow-ups (scope,
    constraints, quality bar, deadlines, preferences).
-2. **/plan** — run the AgentRadio `/plan` command to design the topology (1 leader + 1 proxy
-   + N members) and emit copy-paste launch prompts for each session.
+2. **/팀장** — run the AgentRadio `/팀장` command to design the topology (1 leader + 1 proxy
+    + N members) and emit copy-paste launch prompts for each session.
 3. **Session-creation guidance** — tell the boss how many sessions to create and what prompt
    to paste into each (multi-session: new terminals; single-session: `task` sub-agents).
 4. **Relay flow** — like a real company, hierarchical relay:
    `user → leader → proxy → member`, `proxy → member → proxy → member → member → proxy`,
    `leader → proxy → member → proxy → member → proxy → leader` … The proxy is the hub.
-5. **Debate** — trigger `/debate`; the proxy moderates a stance-based debate; the leader may
-   assign NEW work from the debate synthesis.
+5. **Debate** — trigger `/토론`; the proxy moderates a stance-based debate; the leader may
+    assign NEW work from the debate synthesis.
 
 **Debate protocol** (proxy = moderator / 사회자):
 1. Leader writes topic+goal to `sessions/<task>/debate-<n>.md` (or radio).
@@ -164,8 +164,8 @@ Recommended cross-session flow:
 Stance tag: `STANCE:수용|부정|긍정|조건부부정|공격|방어`. Same flow works for single-session
 parallel sub-agents (orchestrator = leader/proxy, `task` workers = members).
 
-Role prompt templates: `prompts/leader-CLAUDE.md.template`, `prompts/proxy-CLAUDE.md.template`,
-`prompts/member-CLAUDE.md.template`.
+Role prompt templates: `prompts/팀장-CLAUDE.md.template`, `prompts/대리-CLAUDE.md.template`,
+`prompts/팀원-CLAUDE.md.template`.
 
 ## Files
 
@@ -173,11 +173,14 @@ Role prompt templates: `prompts/leader-CLAUDE.md.template`, `prompts/proxy-CLAUD
 scripts/radio.sh        CLI wrapper (sh)
 scripts/radio_main.py   implementation (python3 stdlib only)
 prompts/peer-CLAUDE.md.template        generic equal-peer system prompt template
-prompts/leader-CLAUDE.md.template      Team Leader Session prompt
-prompts/proxy-CLAUDE.md.template       Proxy Session (coordinator/moderator) prompt
-prompts/member-CLAUDE.md.template      Team Member Sub-session prompt
-commands/plan.md        /plan — Team Leader designs session topology + launch prompts
-commands/debate.md      /debate — structured stance-based debate (proxy moderates)
+prompts/팀장-CLAUDE.md.template      Team Leader Session prompt
+prompts/대리-CLAUDE.md.template       Proxy Session (coordinator/moderator) prompt
+prompts/팀원-CLAUDE.md.template      Team Member Sub-session prompt
+commands/팀장.md        /팀장 — Team Leader designs session topology + launch prompts
+commands/토론.md        /토론 — structured stance-based debate (proxy moderates)
+commands/대리.md        /대리 — Proxy Session launch prompt
+commands/팀원.md        /팀원 — Team Member Session launch prompt
+commands/세션간-라디오.md  /세션간-라디오 — cross-session radio+memory collaboration guide
 ```
 
 Environment: `RADIO_ROOT` (bus location), `RADIO_POLL_SEC` (watcher poll interval, default 1s).
