@@ -51,8 +51,9 @@ node tools/agent-meeting.mjs create \
   --agenda "${goalSummary}"
 ```
 
-- 회의실 ID 반환 → 모든 서브에이전트에게 전달 (prompt에 포함하거나 memory에 기록)
+- 회의실 ID 반환 → 모든 서브에이전트에게 전달 (prompt에 포함하거나 `ac.mjs memory write sessions/<task-id>/meeting-id.md "<id>"` 로 기록)
 - 회의실 타입: 초기엔 `planning`, 진행 중엔 `discussion`/`decision`/`review` 등 용도별 전환
+- **메모리**: 모든 장기 기억은 `ac.mjs memory` (유저 개인 GitHub repo) — 중앙 `tak2-08/memory` 미사용
 
 ---
 

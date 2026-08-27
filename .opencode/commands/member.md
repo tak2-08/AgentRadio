@@ -1,5 +1,5 @@
 ---
-description: "Member (팀원): 병렬 작업자. agent-shared-context 메모리에서 업무 컨텍스트 자동 수신, 실행, 리포트. 사용법: /member"
+description: "Member (팀원): 병렬 작업자. agent-shared-context (meeting room + per-user memory) 에서 업무 컨텍스트 자동 수신, 실행, 리포트. 사용법: /member"
 agent: build
 ---
 
@@ -16,11 +16,12 @@ agent: build
 ## 0단계 — 자동 컨텍스트 수신 (Auto context, 매 호출 시 최우선)
 
 업무 시작 전 반드시:
-1. `memory_search` 로 task-id / 주제 검색
+1. `ac.mjs memory search "<task-id>"` 로 이전 지시·결정·진행 회수 (유저 개인 GitHub repo)
 2. `radio_read` 로 팀장 directive + 대리(proxy)의 분배 확인
-3. `memory_get` `sessions/<task-id>/<role>.md` (있으면) 읽기
+3. `ac.mjs memory get sessions/<task-id>/<role>.md` (있으면) 읽기
+4. (회의실 모드) `ac.mjs meeting minutes <id>` 로 진행 상황 확인
 
-팀장에게 업무 전체를 다시 설명해달라고 **절대** 묻지 마라. 필요한 건 버스+메모리에 다 있다.
+팀장에게 업무 전체를 다시 설명해달라고 **절대** 묻지 마라. 필요한 건 버스+메모리+회의실에 다 있다.
 
 ---
 
@@ -31,6 +32,7 @@ agent: build
   - 합의된 plan/동료 주장과 모순 (`URGENT:` if 상대 진행 중 작업 의존)
   - 장애 — 뭘 시도했고 어떻게 실패했는지
   - 버린 접근 — 재시도 방지
+- (회의실 모드) `ac.mjs meeting speak <id> <myId> "..." --kind objection|action-item|statement` 로 실시간 보고
 - 완료 시 대리/팀장에 간결한 결과 리포트.
 - 라운드 사이 **사장의 "Ok" 게이트**를 지킨다. Ok 후 다음 할당 업무로 진행.
 
