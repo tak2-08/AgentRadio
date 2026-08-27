@@ -87,16 +87,16 @@ AgentRadio 하의 Opus 4.6 에이전트 넷(62.1 %)은 가장 강력한 단일 �
   현재 세션 요약을 `memory/YYYY-MM-DD.md`(세션간 협업 시 `sessions/<task-id>/compact.md`)에
   기록합니다. 그래서 빌트인 `/compact`/auto-compaction으로 대화를 잘라도 `memory_search "세션 압축"`으로
   복원할 수 있습니다.
-* **팀장 세션 라이프사이클** — *팀장 세션*이 boss(유저)와 대화하고, `/팀장`을 실행해 토폴로지
+* **팀장 세션 라이프사이클** — *팀장 세션*이 boss(유저)와 대화하고, `/team-leader`를 실행해 토폴로지
   (팀장 1 + 대리 1 + 팀원 N)와 복붙용 시작 프롬프트를 설계한 뒤 계층적 릴레이
   (`user → leader → proxy → member …`)를 조율합니다.
-* **`/팀장`**(구 `/plan`) — 팀장이 세션 토폴로지 + 시작 프롬프트 설계.
-* **`/토론`**(구 `/debate`) — 대리 사회자의 입장 기반 토론(수용/부정/긍정/조건부부정/공격/방어);
+* **`/team-leader`**(구 `/plan`) — 팀장이 세션 토폴로지 + 시작 프롬프트 설계.
+* **`/debate`**(기존 `/debate`) — 대리 사회자의 입장 기반 토론(수용/부정/긍정/조건부부정/공격/방어);
   종합을 팀장이 받아 신규 업무를 하달.
-* **`/대리` · `/팀원`** — 대리 / 팀원 시작 프롬프트 출력.
-* **`/세션간-라디오`** — 세션 간 협업 가이드(라디오 버스 + 메모리 저장소).
-* **역할 템플릿** — `prompts/팀장-CLAUDE.md.template`, `prompts/대리-CLAUDE.md.template`,
-  `prompts/팀원-CLAUDE.md.template` (팀장 / 대리 / 팀원 세션용).
+* **`/proxy` · `/member`** — 대리 / 팀원 시작 프롬프트 출력.
+* **`/cross-session`** — 세션 간 협업 가이드(라디오 버스 + 메모리 저장소).
+* **역할 템플릿** — `prompts/team-leader-CLAUDE.md.template`, `prompts/proxy-CLAUDE.md.template`,
+  `prompts/member-CLAUDE.md.template` (팀장 / 대리 / 팀원 세션용).
 
 ### `agent-shared-context`와 함께 쓰기
 
@@ -109,7 +109,7 @@ AgentRadio는 **[agent-shared-context](https://github.com/tak2-08/agent-shared-c
 ### 사용법
 
 * **OpenCode** — `.opencode/` 폴더가 자동 로드됩니다. opencode를 재시작하면 `memory_*` 및 라디오
-  명령, `/팀장`·`/토론`·`/대리`·`/팀원`·`/세션간-라디오`를 쓸 수 있습니다. 플러그인이 메모리를
+  명령, `/team-leader`·`/debate`·`/proxy`·`/member`·`/cross-session`를 쓸 수 있습니다. 플러그인이 메모리를
   `tak2-08/memory`에 동기화합니다(`AGENT_MEMORY_REPO` / `AGENT_MEMORY_LOCAL` / `AGENT_MEMORY_NS`로 오버라이드).
 * **Claude Code** — `skills/agent-radio`와 `skills/memory-core`를 `~/.claude/skills/`에 복사하고,
   이식 가능한 저장소는 `bin/memory.sh`(curl 설치)로 설치. 역할 템플릿은 `CLAUDE.md`나 스킬에 넣습니다.

@@ -88,16 +88,16 @@ It adds everything below on top of the research harness:
   (and `sessions/<task-id>/compact.md` when collaborating across sessions), so the conversation
   can be safely truncated via the built-in `/compact` / auto-compaction and later restored with
   `memory_search "세션 압축"`.
-* **Team Leader lifecycle** — a *Team Leader Session* talks to the boss (user), runs `/팀장`
+* **Team Leader lifecycle** — a *Team Leader Session* talks to the boss (user), runs `/team-leader`
   to design the topology (1 leader + 1 proxy + N members) and emit copy-paste launch prompts,
   then orchestrates a hierarchical relay: `user → leader → proxy → member …`.
-* **`/팀장`** (was `/plan`) — Team Leader designs session topology + launch prompts.
-* **`/토론`** (was `/debate`) — proxy-moderated stance-based debate (수용/부정/긍정/조건부부정/공격/방어)
+* **`/team-leader`** (was `/plan`) — Team Leader designs session topology + launch prompts.
+* **`/debate`** (was `/debate`) — proxy-moderated stance-based debate (수용/부정/긍정/조건부부정/공격/방어)
   among members; synthesis back to the leader, who may assign new work.
-* **`/대리` · `/팀원`** — output the Proxy / Team-Member launch prompts.
-* **`/세션간-라디오`** — guide for cross-session collaboration (radio bus + memory store).
-* **Role templates** — `prompts/팀장-CLAUDE.md.template`, `prompts/대리-CLAUDE.md.template`,
-  `prompts/팀원-CLAUDE.md.template` for Team Leader / Proxy / Team Member sessions.
+* **`/proxy` · `/member`** — output the Proxy / Team-Member launch prompts.
+* **`/cross-session`** — guide for cross-session collaboration (radio bus + memory store).
+* **Role templates** — `prompts/team-leader-CLAUDE.md.template`, `prompts/proxy-CLAUDE.md.template`,
+  `prompts/member-CLAUDE.md.template` for Team Leader / Proxy / Team Member sessions.
 
 ### Works with `agent-shared-context`
 
@@ -110,7 +110,7 @@ agent-shared-context README likewise points back to AgentRadio as its collaborat
 ### Usage
 
 * **OpenCode** — the `.opencode/` folder is auto-loaded. Restart opencode; the `memory_*` and
-  radio commands plus `/팀장`, `/토론`, `/대리`, `/팀원`, `/세션간-라디오` are available. The plugin
+  radio commands plus `/team-leader`, `/debate`, `/proxy`, `/member`, `/cross-session` are available. The plugin
   syncs memory to `tak2-08/memory` (set `AGENT_MEMORY_REPO` / `AGENT_MEMORY_LOCAL` /
   `AGENT_MEMORY_NS` to override).
 * **Claude Code** — copy `skills/agent-radio` and `skills/memory-core` into `~/.claude/skills/`,
@@ -209,7 +209,7 @@ verify_local.py                   rubric verifier (LLM judge), run locally on a 
 
 .opencode/                         OpenCode/Claude Code/Codex integration (see "OpenCode / Claude
                                    Code / Codex Integration" above): passive radio bus, universal
-                                   memory store, /팀장 /토론 /대리 /팀원 /세션간-라디오 commands,
+                                    memory store, /team-leader /debate /proxy /member /cross-session commands,
                                    team-leader/proxy/member role templates, and the memory-core
                                    plugin synced to the tak2-08/memory GitHub repo.
 ```
