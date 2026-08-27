@@ -142,13 +142,21 @@ Recommended cross-session flow:
    constraints, quality bar, deadlines, preferences).
 2. **/team-leader** — run the AgentRadio `/team-leader` command to design the topology (1 leader + 1 proxy
     + N members) and emit copy-paste launch prompts for each session.
-3. **Session-creation guidance** — tell the boss how many sessions to create and what prompt
-   to paste into each (multi-session: new terminals; single-session: `task` sub-agents).
-4. **Relay flow** — like a real company, hierarchical relay:
-   `user → leader → proxy → member`, `proxy → member → proxy → member → member → proxy`,
-   `leader → proxy → member → proxy → member → proxy → leader` … The proxy is the hub.
-5. **Debate** — trigger `/debate`; the proxy moderates a stance-based debate; the leader may
-    assign NEW work from the debate synthesis.
+ 3. **Session-creation guidance** — tell the boss how many sessions to create and what prompt
+    to paste into each (multi-session: new terminals; single-session: `task` sub-agents).
+    **Then STOP and WAIT for the boss to type "Ok"** (meaning all sessions/sub-agents are
+    ready). Do not start the relay until you see "Ok".
+ 4. **Relay flow** — like a real company, hierarchical relay:
+    `user → leader → proxy → member`, `proxy → member → proxy → member → member → proxy`,
+    `leader → proxy → member → proxy → member → proxy → leader` … The proxy is the hub.
+    **Boss "Ok" gate:** after each round of replies, show the boss a summary and WAIT for the
+    boss's "Ok" before issuing the next round of tasks. Each member processes its work, then
+    returns; the boss's "Ok" authorizes the next relay hop.
+ 5. **Terminate** — the collaboration ends ONLY when the leader declares "일 끝뒀다 / work done".
+    Until then, keep relaying. On terminate, write the final result to `sessions/<task-id>/`
+    and broadcast completion to every session.
+ 6. **Debate** — trigger `/debate`; the proxy moderates a stance-based debate; the leader may
+     assign NEW work from the debate synthesis.
 
 **Debate protocol** (proxy = moderator / 사회자):
 1. Leader writes topic+goal to `sessions/<task>/debate-<n>.md` (or radio).
