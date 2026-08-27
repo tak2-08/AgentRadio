@@ -46,7 +46,7 @@ You talk to your peers ONLY through scripts/radio.sh with RADIO_ROOT={{RADIO_ROO
 ## Multi-session roles (cross-session collaboration)
 
 When agents span DIFFERENT sessions/processes, the radio bus is not shared. Use the
-**memory store** (`tak2-08/memory`, GitHub-backed) as the inter-session bus instead:
+**memory store** (per-user GitHub repo via `ac.mjs memory` (agent-shared-context),) as the inter-session bus instead:
 
 - **Team Leader Session** — owns the goal; delegates to a Proxy Session.
 - **Proxy Session** — coordinates members, synthesizes, relays leader↔member opinions.
@@ -64,8 +64,8 @@ For hierarchical multi-session collaboration, use the role-specific templates in
 - `prompts/member-CLAUDE.md.template`  — Team Member Sub-session (parallel agent)
 
 When sessions span different processes, the radio bus is not shared — use the memory store
-(`tak2-08/memory`) as the inter-session bus (see agent-radio instructions: 협력 아키텍처,
-팀장 세션 라이프사이클, 토론 프로토콜).
+(`ac.mjs memory`, per-user GitHub repo auto-created by agent-shared-context) as the inter-session bus
+(see agent-radio instructions: 협력 아키텍처, 팀장 세션 라이프사이클, 토론 프로토콜).
 
 ## Rules
 

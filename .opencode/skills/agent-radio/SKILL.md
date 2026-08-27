@@ -86,6 +86,56 @@ back to P3. Approve only when there are no unresolved conflicts and no open gaps
 **P5 · Submit** — only after unanimous approval, the assembler writes the FULL draft (not a
 summary), everyone checks it against their own findings, and only then is it submitted.
 
+## Invocation & roles (slash commands)
+
+AgentRadio is driven by slash commands. The **team leader** invokes with the task
+requirements appended; **everyone else just calls the skill** and it auto-loads context.
+
+| Command | Who | Behavior |
+|---|---|---|
+| `/team-leader <requirements>` | leader | Design 1 leader + 1 proxy + N members; emit launch prompts; brief boss; **wait for boss "Ok"**; relay; terminate only when leader says done. |
+| `/proxy` | proxy (hub) | Auto-load context from `agent-shared-context` memory + radio bus; split leader directive into per-member sub-prompts; synthesize member results; relay; honor boss "Ok" gate. |
+| `/member` | member (worker) | Auto-load context (memory + bus); execute assigned share with evidence; post to `worklog`; report; honor boss "Ok" gate. |
+| `/cross-session` | any | Use `tak2-08/memory` as the inter-session coordination bus (`sessions/<task-id>/`). |
+| `/debate <topic>` | proxy (moderator) | Stance-based debate: 수용/부정/긍정/조건부부정/공격/방어; synthesize to `proxy-debate-<n>.md`. |
+| `/memory-dream` | any | Consolidate daily notes → `MEMORY.md` (+ compaction role). |
+
+**Key rule (from the user's spec):** 팀장은 업무만 만들고 팀원/대리 세션이 답신할 때까지
+대기한다. 팀장은 업무 생성 후 사장에게 프록시/팀원 세션 생성을 요청하고, 다 만들어지면
+"Ok"를 보낼 것을 안내한다. 사장 "Ok" → 대기(답신), 답신 → 각자 처리 → 사장 "Ok" 감독 →
+다시 대기. **팀장이 "일 끝났다" 선언 시에만 종료.**
+
+### Single-session variant (no separate sessions)
+
+If the boss says "그냥 협력하자" (not session collaboration) and your model supports
+parallel sub-agents (the `task` tool): **do NOT spawn multiple sessions.** Instead, within
+this one session, launch `task` sub-agents as your proxy/members (사원/대리) and coordinate
+them over the radio bus (`RADIO_ROOT`, auto-injected into sub-agents). The same relay /
+"Ok" gate / terminate rules apply; the only difference is the boss's "Ok" is typed here.
+
+### Opencode single-session variant — Meeting Room only (NEW)
+
+For **opencode specifically**, use the **Radio-Assembler** agent (`.opencode/agents/radio-assembler.md`)
+which spawns `radio-proxy` + `radio-member` sub-agents via `task` and coordinates **entirely
+through `agent-shared-context` meeting rooms** — **no radio bus at all**.
+
+Key differences from radio-based single-session:
+- **Zero radio usage** after bootstrap — all coordination via `agent-meeting.mjs`
+- Meeting types map to collaboration phases: `planning` → `discussion`/`rebuttal` → `decision` → `review` → `retrospective`
+- Speech kinds replace radio prefixes: `statement`/`objection`/`action-item`/`decision`/`summary`/`agreement`
+- Supervision gate = boss `agreement` speech in meeting room (not typed "Ok")
+- Minutes auto-saved as `agent-context` entries (type: `meeting`) → searchable via `agent-search-lite.mjs`
+- Run via slash command: `/radio-assembler <goal>` (see `.opencode/commands/radio-assembler.md`)
+
+This is the **recommended opencode workflow** for multi-agent tasks.
+
+### Multi-session variant
+
+Separate terminals/processes each get a copy of the launch prompt from `/team-leader`.
+Export the **same `RADIO_ROOT`**; distinct agent IDs. The watcher loop (below) + five-phase
+rules run in each agent's context. Cross-session state lives in `tak2-08/memory`
+(`/cross-session`).
+
 ## Running it with real teams
 
 - **Multiple agent processes** (e.g. several `claude -p` / `opencode run` sessions, tmux
@@ -100,88 +150,21 @@ summary), everyone checks it against their own findings, and only then is it sub
   L3 full passive awareness. Most of L3's win comes from mid-execution correction; skip
   the radio entirely for tasks too small to have a "middle".
 
-## Multi-session collaboration (team-leader / proxy / team-member)
-
-AgentRadio scales beyond one session. Two layers:
-
-**Intra-session** — Team Leader {sub-agents}: the five-phase protocol, where `assembler`
-(agent-1) is the Team Leader and `agent-2..N` are sub-agents, all sharing one `RADIO_ROOT`
-(passive awareness). This is the default mode documented above.
-
-**Cross-session** — when collaborators are *different sessions/processes/environments*, the
-radio bus is NOT shared, so use the **memory store** (`tak2-08/memory`, GitHub-backed, see
-memory-core) as the inter-session coordination bus. Three roles:
-
-- **Team Leader Session** — owns the goal and final decisions; delegates to a Proxy Session.
-- **Proxy Session** — the relay/coordinator hub between leader and members: coordinates
-  member work, synthesizes results, and relays opinions both ways
-  (leader → members ↓, members → leader ↑). Inside its own session it still uses radio
-  with sub-agents.
-- **Team Member Sub-session** — acts as a *parallel agent*: reads directives/context from
-  memory, does the work, writes results back to memory.
-
-Transport:
-- `radio` = real-time passive bus **within** a session (shared `RADIO_ROOT`).
-- `memory` = durable coordination bus **across** sessions. Write directives/opinions/status to
-  `memory/YYYY-MM-DD.md` or `sessions/<task-id>/<role>.md`; other sessions recall via
-  `memory_search "<task-id>"` / `memory_get`.
-
-Recommended cross-session flow:
-1. Leader: `memory write --path sessions/<task>/leader-directive.md --content "..."`
-2. Proxy: `memory search "<task>"` → fan out to members (radio or memory) →
-   `memory write sessions/<task>/proxy-synthesis.md` with the combined result.
-3. Member: `memory get sessions/<task>/leader-directive.md` → work →
-   `memory write sessions/<task>/member-<id>.md --content "result/evidence"`.
-4. Leader: `memory get sessions/<task>/proxy-synthesis.md` → approve/feedback back to memory.
-
-## Team Leader lifecycle & debate
-
-**Team Leader Session** talks directly to the boss (user) and orchestrates everything:
-
-1. **Goal clarification** — ask the boss for the goal; ask detailed follow-ups (scope,
-   constraints, quality bar, deadlines, preferences).
-2. **/team-leader** — run the AgentRadio `/team-leader` command to design the topology (1 leader + 1 proxy
-    + N members) and emit copy-paste launch prompts for each session.
-3. **Session-creation guidance** — tell the boss how many sessions to create and what prompt
-   to paste into each (multi-session: new terminals; single-session: `task` sub-agents).
-4. **Relay flow** — like a real company, hierarchical relay:
-   `user → leader → proxy → member`, `proxy → member → proxy → member → member → proxy`,
-   `leader → proxy → member → proxy → member → proxy → leader` … The proxy is the hub.
-5. **Debate** — trigger `/debate`; the proxy moderates a stance-based debate; the leader may
-    assign NEW work from the debate synthesis.
-
-**Debate protocol** (proxy = moderator / 사회자):
-1. Leader writes topic+goal to `sessions/<task>/debate-<n>.md` (or radio).
-2. Proxy delivers it to EACH member individually; every member posts a STANCE:
-   `수용` accept · `부정` reject · `긍정` positive · `조건부부정` conditional-reject ·
-   `공격` attack · `방어` defend — with reasoning/evidence.
-3. Proxy moderates (no side-taking): ensures all responded, allows attack/defend rounds,
-   surfaces conflicts, keeps on-topic.
-4. Proxy writes `sessions/<task>/proxy-debate-<n>.md` = synthesis (positions, consensus,
-   conflicts, recommendation) and surfaces it to the leader.
-5. Leader reads it and MAY assign new work; relay continues.
-
-Stance tag: `STANCE:수용|부정|긍정|조건부부정|공격|방어`. Same flow works for single-session
-parallel sub-agents (orchestrator = leader/proxy, `task` workers = members).
-
-Role prompt templates: `prompts/team-leader-CLAUDE.md.template`, `prompts/proxy-CLAUDE.md.template`,
-`prompts/member-CLAUDE.md.template`.
-
 ## Files
 
 ```
-scripts/radio.sh        CLI wrapper (sh)
-scripts/radio_main.py   implementation (python3 stdlib only)
-prompts/peer-CLAUDE.md.template        generic equal-peer system prompt template
-prompts/team-leader-CLAUDE.md.template      Team Leader Session prompt
-prompts/proxy-CLAUDE.md.template       Proxy Session (coordinator/moderator) prompt
-prompts/member-CLAUDE.md.template      Team Member Sub-session prompt
-commands/team-leader.md        /team-leader — Team Leader designs session topology + launch prompts
-commands/debate.md           /debate — structured stance-based debate (proxy moderates)
-commands/proxy.md            /proxy — Proxy Session launch prompt
-commands/member.md           /member — Team Member Session launch prompt
-commands/cross-session.md    /cross-session — cross-session radio+memory collaboration guide
+scripts/radio.sh                         CLI wrapper (sh)
+scripts/radio_main.py                    implementation (python3 stdlib only)
+prompts/team-leader-CLAUDE.md.template   leader session system prompt
+prompts/proxy-CLAUDE.md.template         proxy (hub) session system prompt
+prompts/member-CLAUDE.md.template        member (worker) session system prompt
+prompts/peer-CLAUDE.md.template          generic peer system prompt (single-session fallback)
 ```
 
+Opencode agents (`.opencode/agents/`):
+`radio-assembler.md` · `radio-proxy.md` · `radio-member.md`
+
+Slash commands (opencode, in .opencode/commands/):
+`/team-leader <req>` · `/proxy` · `/member` · `/cross-session` · `/debate <topic>` · `/memory-dream` · `/radio-assembler <goal>`
+
 Environment: `RADIO_ROOT` (bus location), `RADIO_POLL_SEC` (watcher poll interval, default 1s).
-Cross-session bus: memory store `tak2-08/memory` (memory_search/get/write).
