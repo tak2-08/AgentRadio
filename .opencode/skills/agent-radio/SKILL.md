@@ -134,12 +134,51 @@ Recommended cross-session flow:
    `memory write sessions/<task>/member-<id>.md --content "result/evidence"`.
 4. Leader: `memory get sessions/<task>/proxy-synthesis.md` → approve/feedback back to memory.
 
+## Team Leader lifecycle & debate
+
+**Team Leader Session** talks directly to the boss (user) and orchestrates everything:
+
+1. **Goal clarification** — ask the boss for the goal; ask detailed follow-ups (scope,
+   constraints, quality bar, deadlines, preferences).
+2. **/plan** — run the AgentRadio `/plan` command to design the topology (1 leader + 1 proxy
+   + N members) and emit copy-paste launch prompts for each session.
+3. **Session-creation guidance** — tell the boss how many sessions to create and what prompt
+   to paste into each (multi-session: new terminals; single-session: `task` sub-agents).
+4. **Relay flow** — like a real company, hierarchical relay:
+   `user → leader → proxy → member`, `proxy → member → proxy → member → member → proxy`,
+   `leader → proxy → member → proxy → member → proxy → leader` … The proxy is the hub.
+5. **Debate** — trigger `/debate`; the proxy moderates a stance-based debate; the leader may
+   assign NEW work from the debate synthesis.
+
+**Debate protocol** (proxy = moderator / 사회자):
+1. Leader writes topic+goal to `sessions/<task>/debate-<n>.md` (or radio).
+2. Proxy delivers it to EACH member individually; every member posts a STANCE:
+   `수용` accept · `부정` reject · `긍정` positive · `조건부부정` conditional-reject ·
+   `공격` attack · `방어` defend — with reasoning/evidence.
+3. Proxy moderates (no side-taking): ensures all responded, allows attack/defend rounds,
+   surfaces conflicts, keeps on-topic.
+4. Proxy writes `sessions/<task>/proxy-debate-<n>.md` = synthesis (positions, consensus,
+   conflicts, recommendation) and surfaces it to the leader.
+5. Leader reads it and MAY assign new work; relay continues.
+
+Stance tag: `STANCE:수용|부정|긍정|조건부부정|공격|방어`. Same flow works for single-session
+parallel sub-agents (orchestrator = leader/proxy, `task` workers = members).
+
+Role prompt templates: `prompts/leader-CLAUDE.md.template`, `prompts/proxy-CLAUDE.md.template`,
+`prompts/member-CLAUDE.md.template`.
+
 ## Files
 
 ```
 scripts/radio.sh        CLI wrapper (sh)
 scripts/radio_main.py   implementation (python3 stdlib only)
-prompts/peer-CLAUDE.md.template  per-agent system prompt template
+prompts/peer-CLAUDE.md.template        generic equal-peer system prompt template
+prompts/leader-CLAUDE.md.template      Team Leader Session prompt
+prompts/proxy-CLAUDE.md.template       Proxy Session (coordinator/moderator) prompt
+prompts/member-CLAUDE.md.template      Team Member Sub-session prompt
+commands/plan.md        /plan — Team Leader designs session topology + launch prompts
+commands/debate.md      /debate — structured stance-based debate (proxy moderates)
 ```
 
 Environment: `RADIO_ROOT` (bus location), `RADIO_POLL_SEC` (watcher poll interval, default 1s).
+Cross-session bus: memory store `tak2-08/memory` (memory_search/get/write).
