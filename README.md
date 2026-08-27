@@ -83,6 +83,11 @@ It adds everything below on top of the research harness:
   [`tak2-08/memory`](https://github.com/tak2-08/memory) GitHub repo make long-term memory
   **shared by ALL sessions / agents / environments** (OpenCode, Claude Code, Codex). Portable
   CLI: `bin/memory.sh` (curl-install). Recall is mandatory before answering about prior work.
+* **`/memory-dream` also plays the `/compact` role** — besides promoting daily notes to
+  `MEMORY.md`, it writes a structured **session-compact summary** to `memory/YYYY-MM-DD.md`
+  (and `sessions/<task-id>/compact.md` when collaborating across sessions), so the conversation
+  can be safely truncated via the built-in `/compact` / auto-compaction and later restored with
+  `memory_search "세션 압축"`.
 * **Team Leader lifecycle** — a *Team Leader Session* talks to the boss (user), runs `/팀장`
   to design the topology (1 leader + 1 proxy + N members) and emit copy-paste launch prompts,
   then orchestrates a hierarchical relay: `user → leader → proxy → member …`.

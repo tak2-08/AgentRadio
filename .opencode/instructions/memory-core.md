@@ -55,7 +55,11 @@ memory search "query"; memory write --path daily --content "..."; memory get MEM
 
 ## Dreaming (옵션, thresholded)
 
-`memory_dream`은 최근 daily를 스캔해 `REMEMBER|DECISION|선호|항상|절대` 등 휴리스틱으로 후보를 뽑는다. 승격은 네가 `memory_write path="MEMORY.md"`로 직접.
+`memory_dream`은 최근 daily를 스캔해 `REMEMBER|DECISION|선호|항상|절대` 등 휴리스틱으로 후보를 뽑는다. 승격은 네가 `memory_write path="MEMORY.md"`로 직접. `/memory-dream` 커맨드가 이 승격을 수행한다.
+
+## Compact (세션 압축 — `/compact` 역할)
+
+`/memory-dream`은 빌트인 `/compact`의 **메모리 보존 역할**도 겸한다. 인자 `compact`(또는 인자 없이)로 현재 세션 요약을 `memory/YYYY-MM-DD.md`(`## 🧩 Session Compact`)와 세션간 협업 시 `sessions/<task-id>/compact.md`에 기록한다. 트랜스크립트가 압축되어도 `memory_search "세션 압축"`으로 복원. 긴 세션은 `/memory-dream` → `/compact` 순으로 실행.
 
 ## 환경 변수
 

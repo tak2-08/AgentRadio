@@ -62,6 +62,20 @@ memory dream 7
 
 `memory_dream`(또는 `memory dream`)은 최근 daily를 스캔해 승격 후보 제안. 자동 쓰기 안 함 — 네가 `memory_write path="MEMORY.md"`로 승격.
 
+`/memory-dream` 커맨드가 이 승격 단계를 수행한다(인자 `dream`=승격만).
+
+## Compact (세션 압축 — `/compact` 역할)
+
+`/memory-dream`은 **`/compact`의 메모리 보존 역할**도 겸한다. 빌트인 `/compact`(또는
+auto-compaction)는 트랜스크립트를 자르지만, `/memory-dream compact`(또는 인자 없이 둘 다)를
+먼저/함께 돌리면 현재 세션 요약이 `memory/YYYY-MM-DD.md`(`## 🧩 Session Compact`)와
+`tasks/<id>/compact.md`(세션간 협업 시)에 기록되어, 압축 후에도 `memory_search "세션 압축"`으로
+복원된다. 요약은 목표/수행작업/결정/미완료/다음단계 구조.
+
+> 워크플로: 긴 세션 중간이나 컨텍스트가 차오르기 전 `/memory-dream` → 빌트인 `/compact` 순으로
+> 실행하면 맥락 손실 없이 트랜스크립트를 줄일 수 있다. (플러그인의 자동 flush는 최근 20개 메시지를
+> daily에 append — `/memory-dream`은 그보다 구조화된 세션 요약을 더한다.)
+
 ## 환경 변수
 
 | Var | Default | Purpose |

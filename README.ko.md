@@ -83,6 +83,10 @@ AgentRadio 하의 Opus 4.6 에이전트 넷(62.1 %)은 가장 강력한 단일 �
   [`tak2-08/memory`](https://github.com/tak2-08/memory)로 장기 기억을 **모든 세션/에이전트/환경**
   (OpenCode, Claude Code, Codex)이 공유합니다. 이식 가능한 CLI: `bin/memory.sh`(curl 설치).
   이전 작업에 답하기 전 필수 회상(mandatory recall).
+* **`/memory-dream`이 `/compact` 역할도 함** — daily 노트를 `MEMORY.md`로 승격하는 것 외에,
+  현재 세션 요약을 `memory/YYYY-MM-DD.md`(세션간 협업 시 `sessions/<task-id>/compact.md`)에
+  기록합니다. 그래서 빌트인 `/compact`/auto-compaction으로 대화를 잘라도 `memory_search "세션 압축"`으로
+  복원할 수 있습니다.
 * **팀장 세션 라이프사이클** — *팀장 세션*이 boss(유저)와 대화하고, `/팀장`을 실행해 토폴로지
   (팀장 1 + 대리 1 + 팀원 N)와 복붙용 시작 프롬프트를 설계한 뒤 계층적 릴레이
   (`user → leader → proxy → member …`)를 조율합니다.
