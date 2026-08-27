@@ -19,35 +19,51 @@ const INDEX_VERSION = 2
 const MEMORY_REPO = process.env.AGENT_MEMORY_REPO || "tak2-08/memory"
 const MEMORY_LOCAL = process.env.AGENT_MEMORY_LOCAL || path.join(os.homedir(), ".cache", "agent-memory")
 
+function getEffectiveRoot(): string {
+    return getMemoryRoot(process.cwd(), ".");
+}
+
 function gitPull(): boolean {
-  try {
-    if (fs.existsSync(path.join(MEMORY_LOCAL, ".git"))) {
-      execSync("git pull --rebase --autostash -q", { cwd: MEMORY_LOCAL, stdio: "ignore" })
+    try {
+        const root = getEffectiveRoot();
+        if (fs.existsSync(path.join(root, ".git"))) {
+            execSync("git pull --rebase --autostash -q", { cwd: root, stdio: "ignore" });
+        }
+        return true;
+    } catch {
+        return false;
     }
-    return true
-  } catch { return false }
 }
 
 function gitPush(msg: string): boolean {
-  try {
-    execSync("git add -A", { cwd: MEMORY_LOCAL, stdio: "ignore" })
-    execSync(`git commit -q -m ${JSON.stringify(msg)}`, { cwd: MEMORY_LOCAL, stdio: "ignore" })
-    execSync("git push -q", { cwd: MEMORY_LOCAL, stdio: "ignore" })
-    return true
-  } catch { return false }
+    try {
+        const root = getEffectiveRoot();
+        execSync("git add -A", { cwd: root, stdio: "ignore" });
+        execSync(`git commit -q -m ${JSON.stringify(msg)}`, { cwd: root, stdio: "ignore" });
+        execSync("git push -q", { cwd: root, stdio: "ignore" });
+        return true;
+    } catch {
+        return false;
+    }
 }
 
 function ensureClone(): boolean {
-  try {
-    if (fs.existsSync(path.join(MEMORY_LOCAL, ".git"))) { gitPull(); return true }
-    fs.mkdirSync(path.dirname(MEMORY_LOCAL), { recursive: true })
     try {
-      execSync(`gh repo clone ${MEMORY_REPO} ${JSON.stringify(MEMORY_LOCAL)} -q`, { stdio: "ignore" })
+        const root = getEffectiveRoot();
+        if (fs.existsSync(path.join(root, ".git"))) {
+            gitPull();
+            return true;
+        }
+        fs.mkdirSync(path.dirname(root), { recursive: true });
+        try {
+            execSync(`gh repo clone ${MEMORY_REPO} ${JSON.stringify(root)} -q`, { stdio: "ignore" });
+        } catch {
+            execSync(`git clone https://github.com/${MEMORY_REPO}.git ${JSON.stringify(root)} -q`, { stdio: "ignore" });
+        }
+        return true;
     } catch {
-      execSync(`git clone https://github.com/${MEMORY_REPO}.git ${JSON.stringify(MEMORY_LOCAL)} -q`, { stdio: "ignore" })
+        return false;
     }
-    return true
-  } catch { return false }
 }
 
 function getMemoryRoot(worktree: string, directory: string): string {
@@ -99,7 +115,8 @@ function listMemoryFiles(worktree: string, directory: string): string[] {
 type Hit = { path: string; startLine: number; endLine: number; snippet: string; score: number }
 
 function tokenize(text: string): string[] {
-  return text.toLowerCase().split(/[^a-z0-9가-힣]+/).filter(t=>t.length>=2)
+  // Match sequences of Unicode letters or numbers
+  return text.toLowerCase().match(/[\p{L}\p{N}]+/gu) ?? [];
 }
 
 function searchInFiles(query: string, files: string[], maxResults=10): Hit[] {
@@ -356,54 +373,64 @@ export const MemoryCorePlugin: Plugin = async ({ directory, worktree, client, pr
         },
       }),
 
-      memory_write: tool({
-        description: "Append to daily memory or update MEMORY.md (GitHub-backed universal store, shared across all sessions/agents/environments). For raw logs/observations use daily (memory/YYYY-MM-DD.md, append-only). For durable facts/preferences/decisions use MEMORY.md (curated).",
-        args: {
-          path: tool.schema.string().describe("Target path: 'MEMORY.md' for curated, or 'memory/YYYY-MM-DD.md' or 'daily' for today (default daily). Also supports absolute path."),
-          content: tool.schema.string().describe("Markdown content to write. For daily, will be appended with timestamp. For MEMORY.md, will be appended as new section if not already present."),
-          mode: tool.schema.string().optional().describe("Mode: append (default) or overwrite (use with caution, only for MEMORY.md)"),
-        },
-        async execute(args, ctx) {
-          const rawPath = (args.path || "daily").trim()
-          const content = args.content
-          if (!content || !content.trim()) throw new Error("content must be non-empty")
-          const mode = (args.mode || "append").trim()
-          const root = getMemoryRoot(ctx.worktree, ctx.directory)
-          ensureMemory(root)
-          let target: string
-          if (rawPath==="daily" || rawPath==="") {
-            const today = new Date().toISOString().slice(0,10)
-            target = path.join(root, "memory", `${today}.md`)
-          } else if (rawPath==="MEMORY.md" || rawPath.endsWith("MEMORY.md")) {
-            target = path.isAbsolute(rawPath) ? rawPath : path.join(root, "MEMORY.md")
-          } else if (rawPath.startsWith("memory/")) {
-            target = path.isAbsolute(rawPath) ? rawPath : path.join(root, rawPath)
-          } else if (path.isAbsolute(rawPath)) {
-            target = rawPath
-          } else {
-            if (/^\d{4}-\d{2}-\d{2}\.md$/.test(rawPath)) target = path.join(root, "memory", rawPath)
-            else target = path.join(root, "MEMORY.md")
-          }
-          fs.mkdirSync(path.dirname(target), { recursive: true })
-          if (mode==="overwrite") {
-            fs.writeFileSync(target, content, "utf-8")
-          } else {
-            const isDaily = target.includes(path.join("memory", "20"))
-            let toAppend = content
-            if (isDaily && !content.startsWith("#") && !content.startsWith("- [")) {
-              const stamp = new Date().toISOString()
-              toAppend = `- [${stamp}] ${content}\n`
-            } else if (!toAppend.endsWith("\n")) toAppend += "\n"
-            if (isDaily && !fs.existsSync(target)) {
-              const header = `# ${path.basename(target, ".md")} — daily notes\n\n`
-              fs.writeFileSync(target, header, "utf-8")
-            }
-            fs.appendFileSync(target, toAppend, "utf-8")
-          }
-          gitPush(`memory write: ${rawPath}`)
-          return JSON.stringify({ written: true, path: target, mode: mode==="overwrite"?"overwrite":"append", bytes: Buffer.byteLength(content), store: MEMORY_REPO })
-        },
-      }),
+memory_write: tool({
+         description: "Append to daily memory or update MEMORY.md (GitHub-backed universal store, shared across all sessions/agents/environments). For raw logs/observations use daily (memory/YYYY-MM-DD.md, append-only). For durable facts/preferences/decisions use MEMORY.md (curated).",
+         args: {
+           path: tool.schema.string().describe("Target path: 'MEMORY.md' for curated, or 'memory/YYYY-MM-DD.md' or 'daily' for today (default daily). Also supports absolute path."),
+           content: tool.schema.string().describe("Markdown content to write. For daily, will be appended with timestamp. For MEMORY.md, will be appended as new section if not already present."),
+           mode: tool.schema.string().optional().describe("Mode: append (default) or overwrite (use with caution, only for MEMORY.md)"),
+         },
+         async execute(args, ctx) {
+           const rawPath = (args.path || "daily").trim()
+           const content = args.content
+           if (!content || !content.trim()) throw new Error("content must be non-empty")
+           const mode = (args.mode || "append").trim()
+           const root = getMemoryRoot(ctx.worktree, ctx.directory)
+           ensureMemory(root)
+           let target: string
+           if (rawPath==="daily" || rawPath==="") {
+             const today = new Date().toISOString().slice(0,10)
+             target = path.join(root, "memory", `${today}.md`)
+           } else if (rawPath==="MEMORY.md" || rawPath.endsWith("MEMORY.md")) {
+             target = path.isAbsolute(rawPath) ? rawPath : path.join(root, "MEMORY.md")
+           } else if (rawPath.startsWith("memory/")) {
+             target = path.isAbsolute(rawPath) ? rawPath : path.join(root, rawPath)
+           } else if (path.isAbsolute(rawPath)) {
+             target = rawPath
+           } else {
+             if (/^\d{4}-\d{2}-\d{2}\.md$/.test(rawPath)) target = path.join(root, "memory", rawPath)
+             else target = path.join(root, "MEMORY.md")
+           }
+           // Security: reject absolute paths that escape the memory root
+           if (path.isAbsolute(rawPath)) {
+             const rootWithSep = root.endsWith(path.sep) ? root : root + path.sep
+             if (!target.startsWith(rootWithSep)) {
+               throw new Error(`memory_write: absolute path outside of memory root is not allowed`)
+             }
+           }
+           fs.mkdirSync(path.dirname(target), { recursive: true })
+           if (mode==="overwrite") {
+             fs.writeFileSync(target, content, "utf-8")
+           } else {
+             const isDaily = target.includes(path.join("memory", "20"))
+             let toAppend = content
+             if (isDaily && !content.startsWith("#") && !content.startsWith("- [")) {
+               const stamp = new Date().toISOString()
+               toAppend = `- [${stamp}] ${content}\n`
+             } else if (!toAppend.endsWith("\n")) toAppend += "\n"
+             if (isDaily && !fs.existsSync(target)) {
+               const header = `# ${path.basename(target, ".md")} — daily notes\n\n`
+               fs.writeFileSync(target, header, "utf-8")
+             }
+             fs.appendFileSync(target, toAppend, "utf-8")
+           }
+           const pushed = gitPush(`memory write: ${rawPath}`)
+           if (!pushed) {
+             throw new Error("memory_write: failed to push changes to GitHub repository")
+           }
+           return JSON.stringify({ written: true, path: target, mode: mode==="overwrite"?"overwrite":"append", bytes: Buffer.byteLength(content), store: MEMORY_REPO })
+         },
+       }),
 
       memory_status: tool({
         description: "Show memory index status: files, sizes, provider (FTS-only for now, vector optional). Reflects the GitHub-backed universal store.",

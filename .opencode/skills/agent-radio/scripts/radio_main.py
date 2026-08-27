@@ -119,12 +119,26 @@ def cmd_send(args, kwargs):
     if len(args) < 3:
         die("usage: send <thread> <from> <content> [--mentions csv]")
     name, sender, content = args[0], args[1], args[2]
-    path = thread_file(get_root(kwargs), name)
+    root = get_root(kwargs)
+    # Ensure threads directory exists
+    threads_dir = os.path.join(root, "threads")
+    os.makedirs(threads_dir, exist_ok=True)
+    path = thread_file(root, name)
+    raw_mentions = kwargs.get("mentions", [])
+    mentions = []
+    if raw_mentions:
+        for m in raw_mentions.split(","):
+            m = m.strip()
+            if not m:
+                continue
+            if not m.startswith("@") or not m[1:].replace("-", "").replace("_", "").isalnum():
+                die(f"invalid mention: {m}")
+            mentions.append(m)
     msg = {
         "id": "m-%d-%d" % (time.time_ns(), os.getpid()),
         "ts": time.time_ns(),
         "from": sender,
-        "mentions": kwargs.get("mentions", []),
+        "mentions": mentions,
         "content": content,
     }
     with open(path, "a", encoding="utf-8") as fh:
@@ -137,7 +151,7 @@ def cmd_wait(args, kwargs):
         die("usage: wait <me> [--max-wait SEC] [--max-rounds N]")
     me = args[0]
     max_wait = kwargs.get("max_wait", 60.0)
-    max_rounds = kwargs.get("max_rounds", 0)
+    max_rounds = kwargs.get("max_rounds", 1)
     poll = float(os.environ.get("RADIO_POLL_SEC", "1.0"))
 
     baseline = len(load_all(get_root(kwargs)))
