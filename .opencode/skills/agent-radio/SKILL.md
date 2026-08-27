@@ -100,6 +100,40 @@ summary), everyone checks it against their own findings, and only then is it sub
   L3 full passive awareness. Most of L3's win comes from mid-execution correction; skip
   the radio entirely for tasks too small to have a "middle".
 
+## Multi-session collaboration (team-leader / proxy / team-member)
+
+AgentRadio scales beyond one session. Two layers:
+
+**Intra-session** — Team Leader {sub-agents}: the five-phase protocol, where `assembler`
+(agent-1) is the Team Leader and `agent-2..N` are sub-agents, all sharing one `RADIO_ROOT`
+(passive awareness). This is the default mode documented above.
+
+**Cross-session** — when collaborators are *different sessions/processes/environments*, the
+radio bus is NOT shared, so use the **memory store** (`tak2-08/memory`, GitHub-backed, see
+memory-core) as the inter-session coordination bus. Three roles:
+
+- **Team Leader Session** — owns the goal and final decisions; delegates to a Proxy Session.
+- **Proxy Session** — the relay/coordinator hub between leader and members: coordinates
+  member work, synthesizes results, and relays opinions both ways
+  (leader → members ↓, members → leader ↑). Inside its own session it still uses radio
+  with sub-agents.
+- **Team Member Sub-session** — acts as a *parallel agent*: reads directives/context from
+  memory, does the work, writes results back to memory.
+
+Transport:
+- `radio` = real-time passive bus **within** a session (shared `RADIO_ROOT`).
+- `memory` = durable coordination bus **across** sessions. Write directives/opinions/status to
+  `memory/YYYY-MM-DD.md` or `sessions/<task-id>/<role>.md`; other sessions recall via
+  `memory_search "<task-id>"` / `memory_get`.
+
+Recommended cross-session flow:
+1. Leader: `memory write --path sessions/<task>/leader-directive.md --content "..."`
+2. Proxy: `memory search "<task>"` → fan out to members (radio or memory) →
+   `memory write sessions/<task>/proxy-synthesis.md` with the combined result.
+3. Member: `memory get sessions/<task>/leader-directive.md` → work →
+   `memory write sessions/<task>/member-<id>.md --content "result/evidence"`.
+4. Leader: `memory get sessions/<task>/proxy-synthesis.md` → approve/feedback back to memory.
+
 ## Files
 
 ```

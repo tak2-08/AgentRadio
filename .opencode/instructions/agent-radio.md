@@ -11,6 +11,41 @@ LLM이 fallback으로 읽는 명세다. 소스: [AgentRadio](https://github.com/
 기존 멀티에이전트(L2, blocking receive)는 “듣기 위해 일을 멈췄다”. AgentRadio(L3)는 `wait_for_mention`을
 백그라운드 태스크로 돌려 발견을 즉시 전파한다. SWE-Atlas QnA에서 51.6%→62.1% (+10.5p).
 
+## 협력 아키텍처 (Collaboration Architecture)
+
+AgentRadio는 두 층위의 협력을 지원한다. 소통 매체는 (a) 한 세션 내에서는 **radio 버스**(RADIO_ROOT 공유, 패시브 인식), (b) 여러 세션 간에는 **memory**(GitHub 기반 통합 저장소 `tak2-08/memory`, `memory_search`/`memory_get`/`memory_write`)다.
+
+### 1. 한 세션 내 협력 — 팀장 {하위 에이전트}
+- 구조: **팀장(Team Leader)** 1인 + **하위 에이전트(sub-agents)** N명.
+- 5-phase 프로토콜에서 `assembler`(agent-1) = 팀장, `agent-2..N` = 하위 에이전트.
+- 팀장이 `planning`으로 파티션 합의·`APPROVE` 주도, `worklog`로 라이브 발견 수집, `results-*` 로 리뷰, `P5`에서 최종 조립.
+- 동일 worktree의 모든 에이전트/서브에이전트가 같은 `RADIO_ROOT`를 공유하므로 패시브 인식이 자동 동작.
+
+### 2. 여러 세션 간 협력 — memory + radio
+서로 다른 세션(프로세스/터미널/환경)이 협력할 때는 radio 버스가 공유되지 않으므로, **memory 저장소를 세션 간 조율 버스로 쓴다.** 역할은 셋:
+
+- **팀장 세션 (Team Leader Session)** — 전체 목표·의사결정 소유. 하위 세션들에게 지시를 내리고 최종 결과를 종합·승인. 대리 세션에 위임.
+- **대리 세션 (Proxy Session)** — 팀장↔팀원 사이의 **조율·종합·의견 전달** 허브.
+  - 팀원 작업 조율 (누가 무엇을, 의존성/순서)
+  - 팀원 결과 종합 (synthesis)
+  - 팀장 의견 전달 ↓ (leader → members)
+  - 팀원 의견 전달 ↑ (members → leader)
+  - 자기 세션 내에서는 radio로 하위 에이전트와 패시브 협력.
+- **팀원 하위 세션 (Team Member Sub-session)** — **병렬 에이전트 역할**. 대리 세션(또는 팀장 세션)으로부터 지시/컨텍스트를 memory에서 읽고, 작업 수행 후 결과를 memory에 기록·보고.
+
+#### 전송 계층 (Transport)
+- **radio** = 한 세션 내 실시간 패시브 버스. `RADIO_ROOT` 동일하면 자동 공유.
+- **memory** = 여러 세션 간 내구성 있는 조율 버스. 지시/의견/상태를
+  `memory/YYYY-MM-DD.md` 또는 `sessions/<task-id>/<role>.md` 에 기록하고,
+  다른 세션은 `memory_search "<task-id>"` / `memory_get` 으로 회상.
+  (memory 저장소는 GitHub-backed라 모든 환경에서 동일하게 공유됨 — memory-core 참조.)
+
+#### 권장 패턴 (cross-session)
+1. 팀장 세션: `memory write --path sessions/<task>/leader-directive.md --content "..."` (목표·파티션·승인 기준).
+2. 대리 세션: `memory search "<task>"` 로 지시 수신 → 팀원들에게 radio(`worklog`/전용 스레드) 또는 memory로 하위 지시 배분 → 팀원 결과를 `memory write sessions/<task>/proxy-synthesis.md` 에 종합.
+3. 팀원 세션: `memory get sessions/<task>/leader-directive.md` (또는 proxy 지시) 읽고 작업 → `memory write sessions/<task>/member-<id>.md --content "결과/증거"`.
+4. 팀장 세션: `memory get sessions/<task>/proxy-synthesis.md` 로 종합 수신 → 승인/피드백을 다시 memory에 기록(팀장 의견 전달).
+
 ## 버스
 
 - 위치: `RADIO_ROOT` (플러그인이 `~/.cache/opencode/radio/<worktree>-$hash`로 자동 설정, `shell.env` 훅). 모든 세션/서브에이전트는 **동일 worktree에서 같은 RADIO_ROOT**를 공유한다. 수동 설정 필요 없음.
@@ -64,6 +99,8 @@ LLM이 fallback으로 읽는 명세다. 소스: [AgentRadio](https://github.com/
 ## 다중 프로세스(여러 `opencode run` / tmux 팬)로 쓰는 법
 
 서로 다른 터미널에서 같은 worktree를 열면 같은 `RADIO_ROOT`를 공유한다. 한 팬에서 `radio_send` 하면 다른 팬의 다음 스텝에 자동 주입된다. 명시적으로 같은 버스를 쓰고 싶으면 `export RADIO_ROOT=/tmp/my-radio && ~/.config/opencode/skills/agent-radio/scripts/radio.sh init` 으로 고정 후 모든 팬에 동일 export.
+
+> **서로 다른 세션/워크트리/환경 간 협력**은 radio가 공유되지 않으므로 `memory`(GitHub 통합 저장소 `tak2-08/memory`)를 세션 간 조율 버스로 쓴다. 역할 모델(팀장 세션 / 대리 세션 / 팀원 하위 세션)과 권장 패턴은 위 '협력 아키텍처' 참조.
 
 ## 안티패턴
 

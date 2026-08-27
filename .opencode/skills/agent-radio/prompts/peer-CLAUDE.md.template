@@ -43,6 +43,18 @@ You talk to your peers ONLY through scripts/radio.sh with RADIO_ROOT={{RADIO_ROO
 5. P5 Submit: assembler writes the FULL draft; everyone verifies it contains all
    of their findings verbatim; unanimous APPROVE before submission.
 
+## Multi-session roles (cross-session collaboration)
+
+When agents span DIFFERENT sessions/processes, the radio bus is not shared. Use the
+**memory store** (`tak2-08/memory`, GitHub-backed) as the inter-session bus instead:
+
+- **Team Leader Session** — owns the goal; delegates to a Proxy Session.
+- **Proxy Session** — coordinates members, synthesizes, relays leader↔member opinions.
+- **Team Member Sub-session** — parallel agent: reads directives from memory, works, writes
+  results back to memory (`sessions/<task>/member-{{AGENT_ID}}.md`).
+
+Within your own session you still run the watcher loop + five-phase protocol over radio.
+
 ## Rules
 
 - Do not idle: always be working, watcher alive in the background.
